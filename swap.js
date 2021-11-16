@@ -145,9 +145,8 @@ async function main() {
 	};
 	if (argv.once) await swap(options);
 	else {
-		const frequency = argv.frequency ?? 0.5;
-		console.log(`Running task every ${frequency} minutes`);
-		cron.schedule(`*/${frequency} * * * *`, async () => await swap(options));
+		console.log(`Running task every ${argv.frequency} minutes`);
+		cron.schedule(`*/${argv.frequency} * * * *`, async () => await swap(options));
 	}
 }
 
