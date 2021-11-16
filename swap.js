@@ -12,8 +12,8 @@ const swapTo = process.env.SWAP_TO;
 const frequency = process.env.FREQUENCY || 2;
 
 const swap = async () => {
-	const date = new Date();
-	console.log(date.toLocaleString());
+	// const date = new Date();
+	// console.log(date.toLocaleString());
 	const browser = await chromium.launch({
 		// headless: false,
 	});
@@ -35,11 +35,9 @@ const swap = async () => {
 		assert.equal(page.url(), 'https://m.albert.nyu.edu/app/dashboard');
 		// Save storage state into the file.
 		await context.storageState({ path: 'state.json' });
-	} else {
-		console.log('Using logged-in state');
 	}
 
-	console.log(`Attempting to swap ${toBeSwapped} with ${swapTo}`);
+	// console.log(`Attempting to swap ${toBeSwapped} with ${swapTo}`);
 
 	await page.goto(
 		'https://m.albert.nyu.edu/app/student/enrollmentswap/swapclassdetails/1224/UGRD/NYUNV'
@@ -59,7 +57,7 @@ const swap = async () => {
 	//* Waitlist Operations
 	const wl = await page.$('label[for="wait_list_ok"]');
 	if (wl) {
-		console.log('Waitlist Exist');
+		// console.log('Waitlist Exist');
 		// Click button:has-text("No")
 		await page.click('button:has-text("No")');
 		// Click a:has-text("Yes")
