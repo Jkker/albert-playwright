@@ -2,30 +2,38 @@ const { chromium } = require('playwright');
 const assert = require('assert');
 require('dotenv').config();
 const { postMessage } = require('./wxpush');
+const cron = require('node-cron');
 
 const username = process.env.ALBERT_USERNAME;
 const password = process.env.ALBERT_PASSWORD;
 const toBeSwapped = process.env.TO_BE_SWAPPED;
 const swapTo = process.env.SWAP_TO;
+const frequency = process.env.FREQUENCY || 2;
 
-(async () => {
+const swap = async () => {
+	const date = new Date();
+	console.log(date.toLocaleString());
 	const browser = await chromium.launch({
-		headless: false,
+		// headless: false,
 	});
-	const context = await browser.newContext();
-	// Open new page
+	// const context = await browser.newContext();
+	const context = await browser.newContext({ storageState: 'state.json' });
 	const page = await context.newPage();
-	// Go to https://m.albert.nyu.edu/app/profile/login
 	await page.goto('https://m.albert.nyu.edu/app/profile/login');
-	// Fill [placeholder="Username"]
-	await page.fill('[placeholder="Username"]', username);
-	// Fill [placeholder="Password"]
-	await page.fill('[placeholder="Password"]', password);
-	// Press Enter
-	await page.press('[placeholder="Password"]', 'Enter');
+	await page.waitForLoadState('load');
 
-	//* Login Success
-	assert.equal(page.url(), 'https://m.albert.nyu.edu/app/dashboard');
+	if (page.url() === 'https://m.albert.nyu.edu/app/profile/login') {
+		console.log('Credentials expired, attempting login');
+		await page.fill('[placeholder="Username"]', username);
+		await page.fill('[placeholder="Password"]', password);
+		await page.press('[placeholder="Password"]', 'Enter');
+		// Login Success
+		assert.equal(page.url(), 'https://m.albert.nyu.edu/app/dashboard');
+		// Save storage state into the file.
+		await context.storageState({ path: 'state.json' });
+	} else {
+		console.log('Using logged-in state');
+	}
 
 	console.log(`Attempting to swap ${toBeSwapped} with ${swapTo}`);
 
@@ -36,13 +44,11 @@ const swapTo = process.env.SWAP_TO;
 	await page.click(`label[for="radio-${toBeSwapped}"]`);
 	// Fill [placeholder="Class Nbr"]
 	await page.fill('[placeholder="Class Nbr"]', swapTo);
-	// Click text=Submit
-	await Promise.all([
-		page.waitForNavigation(),
-		page.click('text=Submit', {
-			delay: 78,
-		}),
-	]);
+
+	await page.click('text=Submit', {
+		delay: 78,
+	});
+	await page.waitForLoadState('networkidle');
 
 	// await page.pause();
 
@@ -59,12 +65,10 @@ const swapTo = process.env.SWAP_TO;
 	}
 
 	//* Confirm Swap
-	await Promise.all([
-		page.waitForNavigation(),
-		page.click('input:has-text("Swap")', {
-			delay: 62,
-		}),
-	]);
+	await page.click('input:has-text("Swap")', {
+		delay: 62,
+	});
+	await page.waitForLoadState('load');
 
 	//* Validate Result
 	const success = await page.$(
@@ -75,19 +79,21 @@ const swapTo = process.env.SWAP_TO;
 		console.log(`✅ Successful${result}`);
 		await postMessage(`✅ Successful${result}`);
 	} else {
-		console.log(`Failed to swap ${toBeSwapped} with ${swapTo}`);
+		const result = await page.innerText('section > div:has-text("swap")');
+		console.log(`Failed${result}`);
 	}
 
 	//* Confirm & Close browser
-	await Promise.all([
-		page.waitForNavigation(),
-		page.click('text=Okay', {
-			delay: 62,
-		}),
-	]);
+	await page.click('text=Okay', {
+		delay: 62,
+	});
+	await page.waitForLoadState('load');
 
 	assert.equal(page.url(), 'https://m.albert.nyu.edu/app/student/enrollmentswap/classSwap');
 
 	await context.close();
 	await browser.close();
-})();
+};
+
+console.log(`Running task every ${frequency} minutes`);
+cron.schedule(`*/${frequency} * * * *`, swap);
