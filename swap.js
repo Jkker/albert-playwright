@@ -3,6 +3,7 @@ const assert = require('assert');
 require('dotenv').config();
 const { postMessage } = require('./wxpush');
 const cron = require('node-cron');
+const fs = require('fs-extra');
 
 const username = process.env.ALBERT_USERNAME;
 const password = process.env.ALBERT_PASSWORD;
@@ -17,7 +18,10 @@ const swap = async () => {
 		// headless: false,
 	});
 	// const context = await browser.newContext();
-	const context = await browser.newContext({ storageState: 'state.json' });
+	const state_exists = await fs.pathExists('state.json');
+	const context = await browser.newContext(
+		state_exists ? { storageState: 'state.json' } : undefined
+	);
 	const page = await context.newPage();
 	await page.goto('https://m.albert.nyu.edu/app/profile/login');
 	await page.waitForLoadState('load');
