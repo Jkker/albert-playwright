@@ -1,47 +1,66 @@
-const { chromium } = require('playwright');
-const assert = require('assert');
 require('dotenv').config();
+const { chromium } = require('playwright');
 const { postMessage } = require('./wxpush');
+const { isFileStale } = require('./utils');
+const assert = require('assert');
 const cron = require('node-cron');
 const fs = require('fs-extra');
+const yargs = require('yargs');
 
-const username = process.env.ALBERT_USERNAME;
-const password = process.env.ALBERT_PASSWORD;
-const toBeSwapped = process.env.TO_BE_SWAPPED;
-const swapTo = process.env.SWAP_TO;
-const frequency = process.env.FREQUENCY || 2;
+const ALBERT_USERNAME = process.env.ALBERT_USERNAME;
+const ALBERT_PASSWORD = process.env.ALBERT_PASSWORD;
+const STATE_FILE_NAME = process.env.STATE_FILE_NAME ?? 'state.json';
+const LOGIN_URL = 'https://m.albert.nyu.edu/app/profile/login';
+const DASH_BOARD_URL = 'https://m.albert.nyu.edu/app/dashboard';
+const SWAP_CLASS_URL =
+	'https://m.albert.nyu.edu/app/student/enrollmentswap/swapclassdetails/1224/UGRD/NYUNV';
 
-const swap = async () => {
-	// const date = new Date();
-	// console.log(date.toLocaleString());
+const newContext = async (
+	browser,
+	stateFileName = process.env.STATE_FILE_NAME ?? 'state.json',
+	maxAge = '3h',
+	options = {}
+) => {
+	// State file DNE
+	if (!(await fs.pathExists(stateFileName))) {
+		console.log('State file not found. Creating new context');
+		return await browser.newContext(options);
+	}
+	// State file is stale
+	if (await isFileStale(stateFileName, maxAge)) {
+		console.log('State file is stale. Creating new context');
+		return await browser.newContext(options);
+	}
+	return await browser.newContext({ ...options, storageState: stateFileName });
+};
+
+const swap = async ({ headless = true, verbose = false, ...options }) => {
+	const toBeSwapped = options.toBeSwapped ?? process.env.TO_BE_SWAPPED;
+	const swapTo = options.swapTo ?? process.env.SWAP_TO;
+
 	const browser = await chromium.launch({
-		// headless: false,
+		headless,
 	});
-	// const context = await browser.newContext();
-	const state_exists = await fs.pathExists('state.json');
-	const context = await browser.newContext(
-		state_exists ? { storageState: 'state.json' } : undefined
-	);
+
+	const context = await newContext(browser, STATE_FILE_NAME);
+
 	const page = await context.newPage();
-	await page.goto('https://m.albert.nyu.edu/app/profile/login');
+
+	await page.goto(LOGIN_URL);
 	await page.waitForLoadState('load');
 
-	if (page.url() === 'https://m.albert.nyu.edu/app/profile/login') {
+	if (page.url() === LOGIN_URL) {
 		console.log('Credentials expired, attempting login');
-		await page.fill('[placeholder="Username"]', username);
-		await page.fill('[placeholder="Password"]', password);
+		await page.fill('[placeholder="Username"]', ALBERT_USERNAME);
+		await page.fill('[placeholder="Password"]', ALBERT_PASSWORD);
 		await page.press('[placeholder="Password"]', 'Enter');
 		// Login Success
-		assert.equal(page.url(), 'https://m.albert.nyu.edu/app/dashboard');
+		assert.equal(page.url(), DASH_BOARD_URL);
 		// Save storage state into the file.
-		await context.storageState({ path: 'state.json' });
+		await context.storageState({ path: STATE_FILE_NAME });
 	}
 
-	// console.log(`Attempting to swap ${toBeSwapped} with ${swapTo}`);
-
-	await page.goto(
-		'https://m.albert.nyu.edu/app/student/enrollmentswap/swapclassdetails/1224/UGRD/NYUNV'
-	);
+	await page.goto(SWAP_CLASS_URL);
 	// Check class to be swapped
 	await page.click(`label[for="radio-${toBeSwapped}"]`);
 	// Fill [placeholder="Class Nbr"]
@@ -97,5 +116,39 @@ const swap = async () => {
 	await browser.close();
 };
 
-console.log(`Running task every ${frequency} minutes`);
-cron.schedule(`*/${frequency} * * * *`, swap);
+async function main() {
+	const argv = yargs
+		.option('once', {
+			alias: 'o',
+			description: 'Run once',
+			type: 'boolean',
+			default: false,
+		})
+		.option('verbose', {
+			alias: 'v',
+			description: 'Run browser non-headless mode',
+			type: 'boolean',
+			default: false,
+		})
+		.option('frequency', {
+			alias: 'f',
+			description: 'Run every x minutes',
+			type: 'number',
+			default: process.env.FREQUENCY,
+		})
+		.help()
+		.alias('help', 'h').argv;
+
+	const options = {
+		headless: !argv.verbose,
+		verbose: argv.verbose,
+	};
+	if (argv.once) await swap(options);
+	else {
+		const frequency = argv.frequency ?? 0.5;
+		console.log(`Running task every ${frequency} minutes`);
+		cron.schedule(`*/${frequency} * * * *`, async () => await swap(options));
+	}
+}
+
+main();
