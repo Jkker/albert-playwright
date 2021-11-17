@@ -34,89 +34,7 @@ const newContext = async (
 	return await browser.newContext({ ...options, storageState: stateFileName });
 };
 
-const swap = async ({ headless = true, verbose = false, ...options }) => {
-	const toBeSwapped = options.toBeSwapped ?? process.env.TO_BE_SWAPPED;
-	const swapTo = options.swapTo ?? process.env.SWAP_TO;
-
-	const browser = await chromium.launch({
-		headless,
-	});
-
-	const context = await newContext(browser, STATE_FILE_NAME);
-
-	const page = await context.newPage();
-
-	await page.goto(LOGIN_URL);
-	await page.waitForLoadState('load');
-
-	if (page.url() === LOGIN_URL) {
-		console.log('Credentials expired, attempting login');
-		await page.fill('[placeholder="Username"]', ALBERT_USERNAME);
-		await page.fill('[placeholder="Password"]', ALBERT_PASSWORD);
-		await page.press('[placeholder="Password"]', 'Enter');
-		// Login Success
-		assert.equal(page.url(), DASH_BOARD_URL);
-		// Save storage state into the file.
-		await context.storageState({ path: STATE_FILE_NAME });
-	}
-
-	await page.goto(SWAP_CLASS_URL);
-	// Check class to be swapped
-	await page.click(`label[for="radio-${toBeSwapped}"]`);
-	// Fill [placeholder="Class Nbr"]
-	await page.fill('[placeholder="Class Nbr"]', swapTo);
-
-	await page.click('text=Submit', {
-		delay: 78,
-	});
-	await page.waitForLoadState('networkidle');
-
-	// await page.pause();
-
-	//* Waitlist Operations
-	const wl = await page.$('label[for="wait_list_ok"]');
-	if (wl) {
-		// console.log('Waitlist Exist');
-		// Click button:has-text("No")
-		await page.click('button:has-text("No")');
-		// Click a:has-text("Yes")
-		await page.click('a:has-text("Yes")');
-		// Click text=Save
-		await page.click('text=Save');
-	}
-
-	//* Confirm Swap
-	await page.click('input:has-text("Swap")', {
-		delay: 62,
-	});
-	await page.waitForLoadState('load');
-
-	//* Validate Result
-	const success = await page.$(
-		'div.section-content.visual-links:has-text("Success: This class has been replaced.")'
-	);
-	if (success) {
-		const result = await page.innerText('section > div:has-text("Swap ")');
-		console.log(`✅ Successful${result}`);
-		await postMessage(`✅ Successful${result}`);
-	} else {
-		const result = await page.innerText('section > div:has-text("swap")');
-		console.log(`Failed${result}`);
-	}
-
-	//* Confirm & Close browser
-	await page.click('text=Okay', {
-		delay: 62,
-	});
-	await page.waitForLoadState('load');
-
-	assert.equal(page.url(), 'https://m.albert.nyu.edu/app/student/enrollmentswap/classSwap');
-
-	await context.close();
-	await browser.close();
-};
-
-async function main() {
+const launch = async () => {
 	const argv = yargs
 		.option('once', {
 			alias: 'o',
@@ -139,15 +57,107 @@ async function main() {
 		.help()
 		.alias('help', 'h').argv;
 
-	const options = {
+	const browser = await chromium.launch({
 		headless: !argv.verbose,
-		verbose: argv.verbose,
-	};
-	if (argv.once) await swap(options);
-	else {
-		console.log(`Running task every ${argv.frequency} minutes`);
-		cron.schedule(`*/${argv.frequency} * * * *`, async () => await swap(options));
-	}
-}
+	});
 
-main();
+	const context = await newContext(browser, STATE_FILE_NAME);
+
+	const page = await context.newPage();
+
+	// process.stdin.resume();
+	const closeBrowser = async () => {
+		console.log('Program Exiting. Closing browser.');
+		process.off('exit', closeBrowser);
+		process.off('SIGTERM', closeBrowser);
+		process.off('uncaughtException', closeBrowser);
+		await context.close();
+		await browser.close();
+		process.exit();
+	};
+	process.on('exit', closeBrowser);
+	process.on('SIGTERM', closeBrowser);
+	process.on('uncaughtException', closeBrowser);
+
+	const run = async () => await swap(context, page, { verbose: argv.verbose });
+	try {
+		if (argv.once) await run();
+		else {
+			console.log(`Running task every ${argv.frequency} minutes`);
+			await run();
+			cron.schedule(`*/${argv.frequency} * * * *`, run);
+		}
+	} catch (e) {
+		console.log(e);
+	}
+};
+
+const login = async (page, context, username, password, verbose) => {
+	if ((await page.url()) !== LOGIN_URL) await page.goto(LOGIN_URL);
+	console.log('Logging in...');
+	await page.fill('[placeholder="Username"]', username);
+	await page.fill('[placeholder="Password"]', password);
+	await page.press('[placeholder="Password"]', 'Enter');
+	await page.waitForLoadState('domcontentloaded');
+	// Login Success
+	assert.equal(await page.url(), DASH_BOARD_URL);
+	// Save storage state into the file.
+	await context.storageState({ path: STATE_FILE_NAME });
+	if (verbose) console.log('Login Success! Storage state saved to', STATE_FILE_NAME);
+};
+
+const swap = async (
+	context,
+	page,
+	{ toBeSwapped = process.env.TO_BE_SWAPPED, swapTo = process.env.SWAP_TO, verbose = false }
+) => {
+	await page.goto(SWAP_CLASS_URL);
+	// Not logged in
+	if ((await page.url()) !== SWAP_CLASS_URL) {
+		console.log('Credentials expired');
+		await login(page, context, ALBERT_USERNAME, ALBERT_PASSWORD, verbose);
+		await page.goto(SWAP_CLASS_URL);
+	}
+
+	// Check class to be swapped
+	await page.click(`label[for="radio-${toBeSwapped}"]`);
+	await page.fill('[placeholder="Class Nbr"]', swapTo);
+	await page.click('text=Submit');
+	await page.waitForLoadState('domcontentloaded');
+
+	//* Waitlist Operations
+	const wl = await page.$('label[for="wait_list_ok"]');
+	if (wl) {
+		if (verbose) console.log('Waitlist Exist');
+		// Click button:has-text("No")
+		await page.click('button:has-text("No")');
+		// Click a:has-text("Yes")
+		await page.click('a:has-text("Yes")');
+		// Click text=Save
+		await page.click('text=Save');
+		await page.waitForLoadState('load');
+	}
+
+	//* Confirm Swap
+	await page.click('input:has-text("Swap")');
+	await page.waitForLoadState('domcontentloaded');
+
+	//* Validate Result
+	const success = await page.$(
+		'div.section-content.visual-links:has-text("Success: This class has been replaced.")'
+	);
+
+	if (success) {
+		const result = await page.innerText('section > div:has-text("Swap ")');
+		console.log(`✅ Successful${result} ✅`);
+		await postMessage(`✅ Successful${result} ✅`);
+	} else {
+		const result = await page.innerText('section > div:has-text("swap")');
+		const error = await page.innerText(
+			'div.section-content.visual-links > .section-body:has-text("Error:")'
+		);
+		console.log(`🔃 Failed${result} 🔃\n    ${error}`);
+	}
+};
+
+launch();
