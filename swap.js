@@ -103,7 +103,7 @@ const login = async (page, context, username, password, verbose) => {
 	// assert.equal(await page.url(), DASH_BOARD_URL);
 	// Save storage state into the file.
 	await context.storageState({ path: STATE_FILE_NAME });
-	if (verbose) console.log('Login Success! Storage state saved to', STATE_FILE_NAME);
+	console.log('Login Success! Storage state saved to', STATE_FILE_NAME);
 };
 
 const swap = async (
