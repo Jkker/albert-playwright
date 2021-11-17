@@ -156,7 +156,7 @@ const swap = async (
 		const error = await page.innerText(
 			'div.section-content.visual-links > .section-body:has-text("Error:")'
 		);
-		console.log(`🔃 Failed${result} 🔃\n    ${error}`);
+		console.log(`🔃 Failed${result} 🔃${verbose && '\n   ' + error}`);
 	}
 };
 
