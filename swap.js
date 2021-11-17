@@ -2,7 +2,7 @@ require('dotenv').config();
 const { chromium } = require('playwright');
 const { postMessage } = require('./wxpush');
 const { isFileStale } = require('./utils');
-const assert = require('assert');
+// const assert = require('assert');
 const cron = require('node-cron');
 const fs = require('fs-extra');
 const yargs = require('yargs');
@@ -100,7 +100,7 @@ const login = async (page, context, username, password, verbose) => {
 	await page.press('[placeholder="Password"]', 'Enter');
 	await page.waitForLoadState('domcontentloaded');
 	// Login Success
-	assert.equal(await page.url(), DASH_BOARD_URL);
+	// assert.equal(await page.url(), DASH_BOARD_URL);
 	// Save storage state into the file.
 	await context.storageState({ path: STATE_FILE_NAME });
 	if (verbose) console.log('Login Success! Storage state saved to', STATE_FILE_NAME);
