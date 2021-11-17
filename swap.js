@@ -80,16 +80,13 @@ const launch = async () => {
 	process.on('uncaughtException', closeBrowser);
 
 	const run = async () => await swap(context, page, { verbose: argv.verbose });
-	try {
-		if (argv.once) await run();
-		else {
-			console.log(`Running task every ${argv.frequency} minutes`);
-			await run();
-			cron.schedule(`*/${argv.frequency} * * * *`, run);
-		}
-	} catch (e) {
-		console.log(e);
+	if (argv.once) await run();
+	else {
+		console.log(`Running task every ${argv.frequency} minutes`);
+		await run();
+		cron.schedule(`*/${argv.frequency} * * * *`, run);
 	}
+
 };
 
 const login = async (page, context, username, password, verbose) => {
