@@ -149,14 +149,14 @@ const swap = async (
 
 	if (success) {
 		const result = await page.innerText('section > div:has-text("Swap ")');
-		console.log(`✅ Successful${result} ✅`);
-		await postMessage(`✅ Successful${result} ✅`);
+		console.log(`✅ Succeed to${result} ✅`);
+		await postMessage(`✅ Succeed to${result} ✅`);
 	} else {
 		const result = await page.innerText('section > div:has-text("swap")');
 		const error = await page.innerText(
 			'div.section-content.visual-links > .section-body:has-text("Error:")'
 		);
-		console.log(`🔃 Failed${result} 🔃${verbose ? '\n   ' + error : ''} `);
+		console.log(`🔃 Failed to${result} 🔃${verbose ? '\n   ' + error : ''} `);
 	}
 };
 
