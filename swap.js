@@ -54,9 +54,17 @@ const launch = async () => {
 			type: 'number',
 			default: process.env.FREQUENCY,
 		})
+		.option('cron', {
+			alias: 'c',
+			description: 'Cron Schedule',
+			type: 'string',
+			default: process.env.CRON,
+		})
 		.help()
 		.alias('help', 'h').argv;
 
+
+	const schedule = argv.cron || `*/${argv.frequency} * * * *`;
 	const browser = await chromium.launch({
 		headless: !argv.verbose,
 	});
@@ -82,9 +90,23 @@ const launch = async () => {
 	const run = async () => await swap(context, page, { verbose: argv.verbose });
 	if (argv.once) await run();
 	else {
-		console.log(`Running task every ${argv.frequency} minutes`);
+		const sc = schedule.split(' ');
+		const num = sc[0].split('/')[1];
+		switch (sc.length) {
+			case 4:
+				console.log(`Running task every ${num} hour${num == 1 ? '' : 's'}`);
+				break;
+			case 5:
+				console.log(`Running task every ${num} minute${num == 1 ? '' : 's'}`);
+				break;
+			case 6:
+				console.log(`Running task every ${num} second${num == 1 ? '' : 's'}`);
+				break;
+			default:
+				console.log(`Running task every ${num} minute${num == 1 ? '' : 's'}`);
+		}
 		await run();
-		cron.schedule(`*/${argv.frequency} * * * *`, run);
+		cron.schedule(schedule, run);
 	}
 
 };
