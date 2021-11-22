@@ -17,7 +17,7 @@ const postMessage = async (content, cb) => {
 		if (cb) return cb(res);
 		return res;
 	} catch (err) {
-		console.log('🚀 ~ file: wxpush.js ~ line 20 ~ postMessage ~ err', err);
+		console.error('🚀 ~ file: wxpush.js ~ line 20 ~ postMessage ~ err', err);
 		if (cb) return cb(err);
 		return err;
 	}

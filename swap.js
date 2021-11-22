@@ -2,17 +2,16 @@ require('dotenv').config();
 const { chromium } = require('playwright');
 const { postMessage } = require('./wxpush');
 const { isFileStale } = require('./utils');
-// const assert = require('assert');
 const cron = require('node-cron');
 const fs = require('fs-extra');
 const yargs = require('yargs');
 
+const STATE_FILE_NAME = process.env.STATE_FILE_NAME ?? 'state.json';
 const ALBERT_USERNAME = process.env.ALBERT_USERNAME;
 const ALBERT_PASSWORD = process.env.ALBERT_PASSWORD;
-const STATE_FILE_NAME = process.env.STATE_FILE_NAME ?? 'state.json';
-const LOGIN_URL = 'https://m.albert.nyu.edu/app/profile/login';
-const DASH_BOARD_URL = 'https://m.albert.nyu.edu/app/dashboard';
+const LOGIN_URL = process.env.LOGIN_URL ?? 'https://m.albert.nyu.edu/app/profile/login';
 const SWAP_CLASS_URL =
+	process.env.SWAP_CLASS_URL ??
 	'https://m.albert.nyu.edu/app/student/enrollmentswap/swapclassdetails/1224/UGRD/NYUNV';
 
 const newContext = async (
@@ -63,7 +62,6 @@ const launch = async () => {
 		.help()
 		.alias('help', 'h').argv;
 
-
 	const schedule = argv.cron || `*/${argv.frequency} * * * *`;
 	const browser = await chromium.launch({
 		headless: !argv.verbose,
@@ -72,20 +70,6 @@ const launch = async () => {
 	const context = await newContext(browser, STATE_FILE_NAME);
 
 	const page = await context.newPage();
-
-	// process.stdin.resume();
-	const closeBrowser = async () => {
-		console.log('Program Exiting. Closing browser.');
-		process.off('exit', closeBrowser);
-		process.off('SIGTERM', closeBrowser);
-		process.off('uncaughtException', closeBrowser);
-		await context.close();
-		await browser.close();
-		process.exit();
-	};
-	process.on('exit', closeBrowser);
-	process.on('SIGTERM', closeBrowser);
-	process.on('uncaughtException', closeBrowser);
 
 	const run = async () => await swap(context, page, { verbose: argv.verbose });
 	if (argv.once) await run();
@@ -106,9 +90,23 @@ const launch = async () => {
 				console.log(`Running task every ${num} minute${num == 1 ? '' : 's'}`);
 		}
 		await run();
-		cron.schedule(schedule, run);
-	}
 
+		console.log('🚀 ~ file: swap.js ~ line 111 ~ launch ~ schedule', schedule);
+		const task = cron.schedule(schedule, run);
+	}
+	const closeBrowser = async () => {
+		console.log('Program Exiting. Closing browser.');
+		process.off('exit', closeBrowser);
+		process.off('SIGTERM', closeBrowser);
+		process.off('uncaughtException', closeBrowser);
+		await context.close();
+		await browser.close();
+		task?.destroy();
+		process.exit();
+	};
+	process.on('exit', closeBrowser);
+	process.on('SIGTERM', closeBrowser);
+	process.on('uncaughtException', closeBrowser);
 };
 
 const login = async (page, context, username, password, verbose) => {
@@ -118,9 +116,6 @@ const login = async (page, context, username, password, verbose) => {
 	await page.fill('[placeholder="Password"]', password);
 	await page.press('[placeholder="Password"]', 'Enter');
 	await page.waitForLoadState('domcontentloaded');
-	// Login Success
-	// assert.equal(await page.url(), DASH_BOARD_URL);
-	// Save storage state into the file.
 	await context.storageState({ path: STATE_FILE_NAME });
 	console.log('Login Success! Storage state saved to', STATE_FILE_NAME);
 };
